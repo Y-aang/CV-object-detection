@@ -11,14 +11,14 @@ from utils import array_tool
 def decom_vgg16():
     # the 30th layer of features is relu of conv5_3
     model = vgg16(True)
-
-    # extractor = # 根据PPT上所示的Extractor网络架构图，补全extractor
+    
+    extractor = list(model.features)[:30]
     classifier = model.classifier
 
     classifier = list(classifier)
-    del classifier[2]
-    del classifier[5]
     del classifier[6]
+    del classifier[5]
+    del classifier[2]
     classifier = nn.Sequential(*classifier)
 
     # freeze top4 conv
@@ -96,8 +96,8 @@ class VGG16RoIHead(nn.Module):
         super(VGG16RoIHead, self).__init__()
 
         self.classifier = classifier
-        # self.cls_loc = # 线性层用于回归任务
-        # self.score = # 线性层用于分类任务
+        self.cls_loc =  nn.Linear(512 * roi_size * roi_size, n_class * 4)     # 线性层用于回归任务
+        self.score = nn.Linear(512 * roi_size * roi_size, n_class)       # 线性层用于分类任务
 
         normal_init(self.cls_loc, 0, 0.001)
         normal_init(self.score, 0, 0.01)
@@ -105,7 +105,7 @@ class VGG16RoIHead(nn.Module):
         self.n_class = n_class
         self.roi_size = roi_size
         self.spatial_scale = spatial_scale
-        # self.roi = # ROIPooling层
+        self.roi = RoIPool((roi_size, roi_size), spatial_scale)     # ROIPooling层
 
     def forward(self, x, rois, roi_indices):
         """Forward the chain.
@@ -134,7 +134,10 @@ class VGG16RoIHead(nn.Module):
 
         pool = self.roi(x, indices_and_rois)
         
-        return roi_cls_locs, roi_scores
+        roi_cls_locs = self.cls_loc(pool)
+        roi_scores = self.score(pool)
+        
+        return roi_cls_locs, roi_scores 
     
 
 def normal_init(m, mean, stddev, truncated=False):
